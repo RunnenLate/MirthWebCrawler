@@ -1,0 +1,335 @@
+<codeTemplateLibrary version="3.12.0">
+  <id>619fac77-fca2-465f-b685-c821893d564e</id>
+  <name>Hikari DB</name>
+  <revision>4</revision>
+  <lastModified>
+    <time>1637108338528</time>
+    <timezone>America/Chicago</timezone>
+  </lastModified>
+  <description></description>
+  <includeNewChannels>false</includeNewChannels>
+  <enabledChannelIds>
+    <string>0f4eafe0-e3cd-4b9c-96b5-068f564263bc</string>
+    <string>bc8b5f0f-17b4-4e8e-b2a0-480e8d5be07a</string>
+    <string>cefbee5f-b1db-4c86-94b5-0bdfd7f043ca</string>
+  </enabledChannelIds>
+  <disabledChannelIds>
+    <string>f8c2e8fb-4d7e-4372-abb3-f88956c0bc33</string>
+    <string>47db618a-5d68-431e-a9f8-10eb91486f08</string>
+  </disabledChannelIds>
+  <codeTemplates>
+    <codeTemplate version="3.12.0">
+      <id>cca2bb85-cb9d-4127-8ce3-cbec082de245</id>
+      <name>clearConnectionPool</name>
+      <revision>1</revision>
+      <lastModified>
+        <time>1636933263319</time>
+        <timezone>America/Chicago</timezone>
+      </lastModified>
+      <contextSet>
+        <delegate>
+          <contextType>SOURCE_RECEIVER</contextType>
+          <contextType>SOURCE_FILTER_TRANSFORMER</contextType>
+          <contextType>DESTINATION_FILTER_TRANSFORMER</contextType>
+          <contextType>DESTINATION_RESPONSE_TRANSFORMER</contextType>
+          <contextType>DESTINATION_DISPATCHER</contextType>
+        </delegate>
+      </contextSet>
+      <properties class="com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties">
+        <type>FUNCTION</type>
+        <code>/**
+	Evict all existing database connections from all Hikari connection pools in globalMap.
+*/
+function clearConnectionPools()
+{
+	for each (key_entry in globalMap.getVariables().keySet().toArray())
+	{
+		if (key_entry.substring(0, 8).equals(&quot;hikariDS&quot;))
+		{
+			logger.info(&quot;Evicting all database connections from &quot; + key_entry);
+			var hikariDS = globalMap.get(key_entry);
+			for (var i = 0; i &lt;= hikariDS.getMaximumPoolSize(); i++)
+			{
+				dbConn = hikariDS.getConnection();
+				if (dbConn != null) hikariDS.evictConnection(dbConn);
+			}
+		}
+	}
+}
+</code>
+      </properties>
+    </codeTemplate>
+    <codeTemplate version="3.12.0">
+      <id>8e8ce565-a965-4dcd-a74d-3b51c654d7f4</id>
+      <name>getDBPoolConnection</name>
+      <revision>1</revision>
+      <lastModified>
+        <time>1636933263347</time>
+        <timezone>America/Chicago</timezone>
+      </lastModified>
+      <contextSet>
+        <delegate>
+          <contextType>SOURCE_RECEIVER</contextType>
+          <contextType>SOURCE_FILTER_TRANSFORMER</contextType>
+          <contextType>DESTINATION_FILTER_TRANSFORMER</contextType>
+          <contextType>DESTINATION_RESPONSE_TRANSFORMER</contextType>
+          <contextType>DESTINATION_DISPATCHER</contextType>
+        </delegate>
+      </contextSet>
+      <properties class="com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties">
+        <type>FUNCTION</type>
+        <code>/**
+	Get a (reusable) PostgreSQL database connection from a pool managed by Hikari.
+	Make sure to provide all parameters including empty strings (&quot;&quot;)
+
+	@param {String} dbtype - database vendor, only MySQL, Oracle, PostgreS(QL) and (MS) SQLServer
+		have been implemented
+	@param {String} database - name of the database, e.g. mirthresults, mirthmatch, etc.
+	@param {String} server - domain name or IP address of the database server
+		(may be empty if &quot;mirthresults_server&quot; is defined)
+	@param {String} user - database user name (may be empty)
+	@param {String} password - database user password (may be empty)
+	@return {Connection} - immplementation of java.sql.Connection object
+		(please see appropriate javadoc for its usage)
+*/
+function getPoolDbConn(dbtype, database, server, user, password)
+{
+	var poolSize = 20;
+	var dbConn = null;
+	var error = &quot;&quot;;
+	if (database != null &amp;&amp; database.length &gt; 0 &amp;&amp; !database.equals(&quot;null&quot;))
+	{
+		if (server.length == 0) server = new String(configurationMap.get(&quot;mirthresults_server&quot;));
+		if (server != null &amp;&amp; server.length &gt; 0 &amp;&amp; !server.equals(&quot;null&quot;))
+		{
+			var hikariDS = globalMap.get(&quot;hikariDS_&quot; + server + &quot;_&quot; + database);
+			// Create Connection Pool if it does not exist
+			if(hikariDS == null)
+			{
+				hikariDS = new Packages.com.zaxxer.hikari.HikariDataSource();
+				var driver = &quot;&quot;;
+				var url = &quot;&quot;;
+				dbtype = dbtype.toLowerCase();
+				if (dbtype.equals(&quot;mysql&quot;))
+				{
+					driver = &quot;com.mysql.jdbc.Driver&quot;;
+					url = &quot;jdbc:mysql://&quot; + server + &quot;:3306/&quot; + database;
+				}
+				else if (dbtype.equals(&quot;oracle&quot;))
+				{
+					driver = &quot;oracle.jdbc.OracleDriver&quot;;
+					url = &quot;jdbc:oracle:thin:@&quot; + server + &quot;:1521:&quot; + database;
+				}
+				else if (dbtype.indexOf(&quot;postgres&quot;) == 0)
+				{
+					driver = &quot;org.postgresql.Driver&quot;;
+					url = &quot;jdbc:postgresql://&quot; + server + &quot;:5432/&quot; + database;
+				}
+				else if (dbtype.indexOf(&quot;sqlserver&quot;) &gt;= 0)
+				{
+					driver = &quot;net.sourceforge.jtds.jdbc.Driver&quot;;
+					url = &quot;jdbc:jtds:sqlserver://&quot; + server + &quot;:1433/&quot; + database;
+				}
+				// else throw &quot;Connection to database of type &quot; + dbtype &quot; is not yet implemented&quot;;
+				if (user.length == 0) user = database;
+				if (password.length == 0) password = database;
+				hikariDS.setDriverClassName(driver);			// Default: found automatically
+				hikariDS.setJdbcUrl(url);
+				hikariDS.setUsername(user);
+				hikariDS.setPassword(password);
+				hikariDS.setPoolName(server + &quot;_&quot; + database);	// Default: auto-generated
+				hikariDS.setMaximumPoolSize(poolSize);				// Default: 10
+				//hikariDS.setAutoCommit(true);					// Default: true
+				//hikariDS.setMaxLifetime(1000000);				// Default: 1800000
+				//hikariDS.setConnectionTestQuery(&quot;select 1 as test_result&quot;); // Don&apos;t set if DB supports Connection.isValid()
+				//hikariDS.setConnectionTimeout(5000);			// Default: 30000
+				//hikariDS.setInitializationFailFast(false);	// Default: true
+				//hikariDS.setIdleTimeout(5000);				// Default: 600000
+				//try { hikariDS.setLoginTimeout(5000); }		// Default: ???
+				//catch(Exception ex) { }
+				//globalMap.put(&quot;hikariDS_&quot; + server + &quot;_&quot; + database, hikariDS);
+				hikariDS.setLeakDetectionThreshold(5000);
+				globalMap.put(&quot;hikariDS_&quot; + server + &quot;_&quot; + database, hikariDS);
+			}
+			if (hikariDS != null)
+			{
+				var goodConnectionFound = false;
+				// Try to query the DB using each connection in the pool (and a new one), if they all fail - error out
+				for (var i = 0; i &lt;= poolSize; i++)
+				{
+					// Step 1: get DB connection
+					dbConn = hikariDS.getConnection();
+					// Step 2: test the DB connection and handle the possible exception
+					var tempInt = -1;
+					try
+					{
+						var stmt = dbConn.createStatement();
+						var db_res = stmt.executeQuery(&quot;select 321 as db_test&quot;);
+						if (db_res.next())
+						{
+							tempInt = db_res.getInt(1);
+						}
+						stmt.close();
+					}
+					catch(ex) { error = new String(ex.toString()); }
+					if (tempInt == 321)
+					{
+						error = &quot;&quot;;
+						goodConnectionFound = true;
+						break;
+					}
+					// Step 3: remove bad connection from the pool
+					else hikariDS.evictConnection(dbConn);
+				}
+				if (!goodConnectionFound) dbConn = null;
+			}
+			else error = &quot;getPoolDbConn() cannot create a new Hikari data source (connection pool)&quot;;
+		}
+		else error = &quot;getPoolDbConn() server address not provided&quot;;
+	}
+	else error = &quot;getPoolDbConn() database name not provided&quot;;
+	if (error.length &gt; 4) throw error;
+	return dbConn;
+}
+</code>
+      </properties>
+    </codeTemplate>
+    <codeTemplate version="3.12.0">
+      <id>ef779224-ab16-408b-b824-19b3189766a0</id>
+      <name>queryDBConneciton</name>
+      <revision>11</revision>
+      <lastModified>
+        <time>1637115353125</time>
+        <timezone>America/Chicago</timezone>
+      </lastModified>
+      <contextSet>
+        <delegate>
+          <contextType>SOURCE_RECEIVER</contextType>
+          <contextType>SOURCE_FILTER_TRANSFORMER</contextType>
+          <contextType>DESTINATION_FILTER_TRANSFORMER</contextType>
+          <contextType>DESTINATION_RESPONSE_TRANSFORMER</contextType>
+          <contextType>DESTINATION_DISPATCHER</contextType>
+        </delegate>
+      </contextSet>
+      <properties class="com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties">
+        <type>FUNCTION</type>
+        <code>/**
+	Run a SQL query using a pooled PostgreSQL database connection
+	obtained (in this function) by calling getPoolDbConn()
+	Make sure to provide all parameters including empty strings (&quot;&quot;) or null&apos;s as appropriate.
+
+	@param {String} dbtype - database vendor, only MySQL, Oracle, PostgreS(QL) and (MS) SQLServer
+		have been implemented
+	@param {String} database - name of the database, e.g. mirthresults, mirthmatch, etc.
+	@param {String} server - domain name or IP address of the database server
+		(may be empty if &quot;mirthresults_server&quot; is defined)
+	@param {String} user - database user name (may be empty)
+	@param {String} password - database user password (may be empty)
+	@param (String} sql - SQL query to execute, may include ? for parameters
+	@param {Array} args - JavaScript array of query parameters,
+		can be a mix of strings and numbers or null
+	@return {CachedRowSet} - returns a standard CachedRowSet directly usable
+		(can be returned from a Database Reader)
+*/
+function queryPoolDbConn(dbtype, database, server, user, password, sql, args)
+{
+	var valOut = null;
+	var dbConn = getPoolDbConn(dbtype, database, server, user, password);
+	if (dbConn != null)
+	{
+		var statement = dbConn.prepareStatement(sql);
+		
+		if (statement != null)
+		{
+			if (args != null &amp;&amp; args.size() &gt; 0)
+			{
+				statement.clearParameters();
+				//logger.info(&apos;args length: &apos; + args.size())
+				for (var i = 0; i &lt; args.size(); i++)
+				{
+					//logger.info(&apos;args: &apos; + args.get(i))
+					statement.setObject(i + 1, args.get(i));
+				}
+			}
+			//logger.info(&apos;statement: &apos; + statement)
+			var db_res = statement.executeQuery();
+			valOut = new Packages.com.sun.rowset.CachedRowSetImpl();
+			valOut.populate(db_res);
+			statement.close();
+		}
+		else throw &quot;updatePoolDbConn(): dbConn.prepareStatement() failed&quot;;
+		dbConn.close();
+	}
+	else throw &quot;updatePoolDbConn(): dbConn cannot connect to the database&quot;;
+	return valOut;
+}</code>
+      </properties>
+    </codeTemplate>
+    <codeTemplate version="3.12.0">
+      <id>7b84e8a9-1175-48ed-8980-721a2be481de</id>
+      <name>UpdateDBConnection</name>
+      <revision>5</revision>
+      <lastModified>
+        <time>1637115353137</time>
+        <timezone>America/Chicago</timezone>
+      </lastModified>
+      <contextSet>
+        <delegate>
+          <contextType>SOURCE_RECEIVER</contextType>
+          <contextType>SOURCE_FILTER_TRANSFORMER</contextType>
+          <contextType>DESTINATION_FILTER_TRANSFORMER</contextType>
+          <contextType>DESTINATION_RESPONSE_TRANSFORMER</contextType>
+          <contextType>DESTINATION_DISPATCHER</contextType>
+        </delegate>
+      </contextSet>
+      <properties class="com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties">
+        <type>FUNCTION</type>
+        <code>/**
+	Run a SQL update using a pooled PostgreSQL database connection
+	obtained (in this function) by calling getPoolDbConn()
+	Make sure to provide all parameters including empty strings (&quot;&quot;) or null&apos;s as appropriate.
+
+	@param {String} dbtype - database vendor, only MySQL, Oracle, PostgreS(QL) and (MS) SQLServer
+		have been implemented
+	@param {String} database - name of the database, e.g. mirthresults, mirthmatch, etc.
+	@param {String} server - domain name or IP address of the database server
+		(may be empty if &quot;mirthresults_server&quot; is defined)
+	@param {String} user - database user name (may be empty)
+	@param {String} password - database user password (may be empty)
+	@param (String} sql - SQL query to execute, may include ? for parameters
+	@param {Array} args - JavaScript array of query parameters,
+		can be a mix of strings and numbers or null
+	@return {Integer} - returns the number of affected rows
+*/
+function updatePoolDbConn(dbtype, database, server, user, password, sql, args)
+{
+	var row_count = -1;
+	var dbConn = getPoolDbConn(dbtype, database, server, user, password);
+	if (dbConn != null)
+	{
+		dbConn.setAutoCommit(true);
+		var statement = dbConn.prepareStatement(sql);
+		if (statement != null)
+		{
+			if (args != null &amp;&amp; args.size() &gt; 0)
+			{
+				statement.clearParameters();
+				for (var i = 0; i &lt; args.size(); i++)
+				{
+					//logger.info(&apos;args value: &apos; + args.get(i))
+					statement.setObject(i + 1, args.get(i));
+				}
+			}
+			row_count = statement.executeUpdate();
+			statement.close();
+		}
+		else throw &quot;updatePoolDbConn(): dbConn.prepareStatement() failed&quot;;
+		dbConn.close();
+	}
+	else throw &quot;updatePoolDbConn(): dbConn cannot connect to the database&quot;;
+	return row_count;
+}</code>
+      </properties>
+    </codeTemplate>
+  </codeTemplates>
+</codeTemplateLibrary>
