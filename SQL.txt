@@ -1,0 +1,88 @@
+use mysql 
+
+Create user mirth;
+
+GRANT ALL PRIVILEGES ON *.* TO 'mirth'@'localhost' IDENTIFIED BY 'Password1' WITH GRANT OPTION;
+
+create database IT810;
+
+use IT810;
+
+create table Blogs (
+    URL_ID INT AUTO_INCREMENT,
+    URL VARCHAR(500) NOT NULL,
+    Procesed init NOT NULL DEFAULT 0,
+    Queue_Time TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    Error VARCHAR(500) DEFAULT NULL,
+    PRIMARY KEY (URL_ID)
+);
+
+create table Posts (
+    Post_ID INT AUTO_INCREMENT,
+    URL_ID INT,
+    Post_Body BLOB NOT NULL,
+    Queue_Time TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    Procesed int NOT NULL DEFAULT 0,
+    Error VARCHAR(500),
+    PRIMARY KEY (Post_ID),    
+    FOREIGN KEY (URL_ID) REFERENCES Blogs(URL_ID)
+);
+
+create table Word_Count (
+    Word_ID INT AUTO_INCREMENT,
+    Word VARCHAR(255) NOT NULL,
+    Count INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (Word_ID)
+);
+
+DELIMITER //
+Create PROCEDURE it810.getURL()
+BEGIN
+	select * from blogs where procesed = 0 and error is null order  by Queue_time Asc LIMIT 1;
+END //
+
+DELIMITER //
+CREATE PROCEDURE `insertURL`(URL char(200))
+BEGIN
+	insert into it810.blogs set URL_ID = URL, Queue_time = now();
+END //
+
+DELIMITER //
+CREATE PROCEDURE `processURL`(processed int, errored char(200), ID int)
+BEGIN
+	update blogs set procesed = processed, error = errored where URL_ID = ID ;
+END //
+
+DELIMITER //
+CREATE PROCEDURE `insertPost`(URL char(200), PostText blob)
+BEGIN
+	insert into it810.posts set URL_ID = URL, Queue_time = now(), Post_Body = PostText;
+END //
+
+DELIMITER //
+CREATE PROCEDURE `getPost`(URL char(200), PostText blob)
+BEGIN
+	select * from it810.posts where procesed = 0 and error is null order  by Queue_time Asc LIMIT 1;
+END //
+
+DELIMITER //
+CREATE PROCEDURE `getPost`()
+BEGIN
+	SELECT CAST(Post_Body AS CHAR(10000) CHARACTER SET utf8) AS Post_Body, Post_ID, error, procesed from it810.posts where procesed = 0 and error is null order  by Queue_time Asc LIMIT 1;
+END //
+
+DELIMITER //
+CREATE PROCEDURE `processPost`(words char(200))
+BEGIN
+  IF EXISTS (select * from word_count where Word = words) THEN
+    update word_count set count = count + 1 where Word = words;
+  ELSE 
+    insert into word_count set Word = words, count = 1;
+  END IF;
+END //
+
+DELIMITER //
+CREATE PROCEDURE `processPost`(processed int, errored char(200), ID int)
+BEGIN
+	update posts set procesed = processed, error = errored where Post_ID = ID ;
+END //
